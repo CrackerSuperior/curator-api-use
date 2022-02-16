@@ -84,4 +84,65 @@ public class CuratorNode {
                 ? client.create().creatingParentContainersIfNeeded().withMode(createMode).forPath(path, data)
                 : create(path, data, createMode);
     }
+
+    /**
+     * Deleting a node.
+     *
+     * <p>Note that this method can only remove the leaf node, otherwise an exception will be thrown.
+     * @param path ZNode path
+     * @return void
+     * @throws Exception exception
+     */
+    public Void delete(final String path) throws Exception {
+        return client.delete().forPath(path);
+    }
+
+    /**
+     * Delete a node and recursively delete all of its children.
+     * @param path ZNode path
+     * @param deletingChildrenIfNeeded Whether to recursively delete all of its children
+     * @return void
+     * @throws Exception exception
+     */
+    public Void delete(final String path, final boolean deletingChildrenIfNeeded) throws Exception {
+        return deletingChildrenIfNeeded
+                ? client.delete().deletingChildrenIfNeeded().forPath(path)
+                : delete(path);
+    }
+
+    /**
+     * Deletes a node to force the specified version to be deleted.
+     * @param path ZNode path
+     * @param version specify the version
+     * @return void
+     * @throws Exception exception
+     */
+    public Void delete(final String path, final int version) throws Exception {
+        return client.delete().withVersion(version).forPath(path);
+    }
+
+    /**
+     * Deleting a node is mandatory.
+     *
+     * <p>A guaranteed() interface is a safeguard, and as long as a client session is valid, a Curator will continue to
+     * remove nodes in the background until they are successfully removed.
+     * @param path ZNode path
+     * @return void
+     * @throws Exception exception
+     */
+    public Void deleteGuaranteed(final String path) throws Exception {
+        return client.delete().guaranteed().forPath(path);
+    }
+
+    public Void deleteGuaranteed(final String path, final boolean deletingChildrenIfNeeded) throws Exception {
+        return deletingChildrenIfNeeded
+                ? client.delete().guaranteed().deletingChildrenIfNeeded().forPath(path)
+                : deleteGuaranteed(path);
+    }
+
+    public Void deleteGuaranteed(final String path, final boolean deletingChildrenIfNeeded, final int version) throws Exception {
+        return deletingChildrenIfNeeded
+                ? client.delete().guaranteed().deletingChildrenIfNeeded().withVersion(version).forPath(path)
+                : client.delete().guaranteed().withVersion(version).forPath(path);
+    }
 }

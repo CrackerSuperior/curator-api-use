@@ -33,4 +33,29 @@ public class CuratorNodeTest {
             System.out.println(e.getMessage());
         }
     }
+
+    @Test
+    public void delete() {
+        String connectString = "localhost:2181";
+        String path = "/firstNode";
+        String path2 = "/secondNode";
+        String path3 = "/thirdNode/bbb";
+        String path4 = "/fourthNode";
+        String path5 = "/fifthNode";
+        String path6 = "/sixthNode/ccc";
+        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+        CuratorSession curatorSession = new CuratorSession();
+        CuratorFramework client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy, "test");
+        CuratorNode curatorNode = new CuratorNode(client);
+        try{
+            curatorNode.delete(path);
+            curatorNode.delete(path3, true);
+            curatorNode.delete(path4, 1);
+            curatorNode.deleteGuaranteed(path2);
+            curatorNode.deleteGuaranteed(path6);
+            curatorNode.deleteGuaranteed(path5, true, 1);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
 }
