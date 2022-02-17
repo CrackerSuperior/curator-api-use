@@ -203,14 +203,25 @@ public class CuratorNode {
     }
 
     /**
-     * Updates the data content of a node to force the specified version to be updated
+     * Updates the data content of a node to force the specified version to be updated.
      * @param path ZNode path
      * @param data updated data
      * @param version node version
      * @return The stat for this node is obtained
      * @throws Exception exception
      */
-    public Stat setData(final String path, final byte[] data, int version) throws Exception {
+    @SuppressWarnings("all")
+    public Stat setData(final String path, final byte[] data, final int version) throws Exception {
         return client.setData().withVersion(version).forPath(path, data);
+    }
+
+    /**
+     * Check whether the node exists.
+     * @param path ZNode path
+     * @return Check whether the node exists
+     * @throws Exception exception
+     */
+    public boolean exists(final String path) throws Exception {
+        return client.checkExists().forPath(path) != null;
     }
 }

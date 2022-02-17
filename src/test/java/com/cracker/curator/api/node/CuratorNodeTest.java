@@ -107,4 +107,19 @@ public class CuratorNodeTest {
             System.out.println(e.getMessage());
         }
     }
+
+    @Test
+    public void exists() {
+        String connectString = "localhost:2181";
+        String path1 = "/MyFirstZNode/MyFirstSubNode";
+        try {
+            RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+            CuratorSession curatorSession = new CuratorSession();
+            CuratorFramework client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy);
+            CuratorNode curatorNode = new CuratorNode(client);
+            System.out.println(curatorNode.exists(path1));
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
 }
