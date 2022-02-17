@@ -5,6 +5,7 @@ import org.apache.curator.framework.api.BackgroundCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.data.Stat;
 
+@SuppressWarnings("unused")
 public class CuratorNode {
 
     private final CuratorFramework client;
@@ -106,6 +107,7 @@ public class CuratorNode {
      * @return void
      * @throws Exception exception
      */
+    @SuppressWarnings("all")
     public Void delete(final String path, final boolean deletingChildrenIfNeeded) throws Exception {
         return deletingChildrenIfNeeded
                 ? client.delete().deletingChildrenIfNeeded().forPath(path)
@@ -119,6 +121,7 @@ public class CuratorNode {
      * @return void
      * @throws Exception exception
      */
+    @SuppressWarnings("all")
     public Void delete(final String path, final int version) throws Exception {
         return client.delete().withVersion(version).forPath(path);
     }
@@ -130,6 +133,7 @@ public class CuratorNode {
      * @return void
      * @throws Exception exception
      */
+    @SuppressWarnings("all")
     public Void delete(final String path, final BackgroundCallback callback) throws Exception {
         return client.delete().inBackground(callback).forPath(path);
     }
@@ -153,23 +157,60 @@ public class CuratorNode {
                 : deleteGuaranteed(path);
     }
 
+    @SuppressWarnings("all")
     public Void deleteGuaranteed(final String path, final boolean deletingChildrenIfNeeded, final int version) throws Exception {
         return deletingChildrenIfNeeded
                 ? client.delete().guaranteed().deletingChildrenIfNeeded().withVersion(version).forPath(path)
                 : client.delete().guaranteed().withVersion(version).forPath(path);
     }
 
+    @SuppressWarnings("all")
     public Void deleteGuaranteed(final String path, final BackgroundCallback callback) throws Exception {
         return client.delete().guaranteed().inBackground(callback).forPath(path);
     }
 
+    /**
+     * Reads the data content of a node.
+     * @param path ZNode path
+     * @return node data
+     * @throws Exception exception
+     */
     public byte[] getData(final String path) throws Exception {
         return client.getData().forPath(path);
     }
 
+    /**
+     * The stat for this node is obtained.
+     * @param path ZNode path
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */
     public Stat getStat(final String path) throws Exception {
         Stat stat = new Stat();
         client.getData().storingStatIn(stat).forPath(path);
         return stat;
+    }
+
+    /**
+     * Updates the data content of a node.
+     * @param path ZNode path
+     * @param data updated data
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */
+    public Stat setData(final String path, final byte[] data) throws Exception {
+        return client.setData().forPath(path, data);
+    }
+
+    /**
+     * Updates the data content of a node to force the specified version to be updated
+     * @param path ZNode path
+     * @param data updated data
+     * @param version node version
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */
+    public Stat setData(final String path, final byte[] data, int version) throws Exception {
+        return client.setData().withVersion(version).forPath(path, data);
     }
 }
