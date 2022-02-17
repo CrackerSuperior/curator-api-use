@@ -7,6 +7,8 @@ import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.zookeeper.CreateMode;
 import org.junit.Test;
 
+import java.nio.charset.StandardCharsets;
+
 public class CuratorNodeTest {
 
     @Test
@@ -18,6 +20,8 @@ public class CuratorNodeTest {
         String path4 = "/fourthNode";
         String path5 = "/fifthNode";
         String path6 = "/sixthNode/ccc";
+        String path7 = "/Node1";
+        String path8 = "/Node2";
         RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
         CuratorSession curatorSession = new CuratorSession();
         CuratorFramework client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy, "test");
@@ -25,6 +29,8 @@ public class CuratorNodeTest {
         try {
             System.out.println(curatorNode.create(path));
             System.out.println(curatorNode.create(path2, "init".getBytes()));
+            System.out.println(curatorNode.create(path7, "Node7".getBytes()));
+            System.out.println(curatorNode.create(path8, "Node8".getBytes()));
             System.out.println(curatorNode.create(path3, "path3".getBytes(), true));
             System.out.println(curatorNode.create(path4, CreateMode.PERSISTENT));
             System.out.println(curatorNode.create(path5, "path5".getBytes(), CreateMode.PERSISTENT));
@@ -43,6 +49,8 @@ public class CuratorNodeTest {
         String path4 = "/fourthNode";
         String path5 = "/fifthNode";
         String path6 = "/sixthNode/ccc";
+        String path7 = "/Node1";
+        String path8 = "/Node2";
         RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
         CuratorSession curatorSession = new CuratorSession();
         CuratorFramework client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy, "test");
@@ -54,6 +62,31 @@ public class CuratorNodeTest {
             curatorNode.deleteGuaranteed(path2);
             curatorNode.deleteGuaranteed(path6);
             curatorNode.deleteGuaranteed(path5, true, 1);
+            curatorNode.delete(path7, (client1, event) -> {
+                System.out.println("我被删除了~");
+                System.out.println(event);
+            });
+            curatorNode.deleteGuaranteed(path8, (client1, event) -> {
+                System.out.println("我被强制删除了~");
+                System.out.println(event);
+            });
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    @Test
+    public void getData() {
+        String connectString = "localhost:2181";
+        String path1 = "/MyFirstZNode/MyFirstSubNode";
+        String path2 = "/MyFirstZNode/MySecondSubNode";
+        try {
+            RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+            CuratorSession curatorSession = new CuratorSession();
+            CuratorFramework client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy);
+            CuratorNode curatorNode = new CuratorNode(client);
+            System.out.println(new String(curatorNode.getData(path1), StandardCharsets.UTF_8));
+            System.out.println(curatorNode.getStat(path2).toString());
         } catch (Exception e) {
             System.out.println(e.getMessage());
         }

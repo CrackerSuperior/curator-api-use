@@ -1,7 +1,9 @@
 package com.cracker.curator.api.node;
 
 import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.BackgroundCallback;
 import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.data.Stat;
 
 public class CuratorNode {
 
@@ -122,6 +124,17 @@ public class CuratorNode {
     }
 
     /**
+     * A callback function after a node is deleted.
+     * @param path ZNode path
+     * @param callback callback function
+     * @return void
+     * @throws Exception exception
+     */
+    public Void delete(final String path, final BackgroundCallback callback) throws Exception {
+        return client.delete().inBackground(callback).forPath(path);
+    }
+
+    /**
      * Deleting a node is mandatory.
      *
      * <p>A guaranteed() interface is a safeguard, and as long as a client session is valid, a Curator will continue to
@@ -144,5 +157,19 @@ public class CuratorNode {
         return deletingChildrenIfNeeded
                 ? client.delete().guaranteed().deletingChildrenIfNeeded().withVersion(version).forPath(path)
                 : client.delete().guaranteed().withVersion(version).forPath(path);
+    }
+
+    public Void deleteGuaranteed(final String path, final BackgroundCallback callback) throws Exception {
+        return client.delete().guaranteed().inBackground(callback).forPath(path);
+    }
+
+    public byte[] getData(final String path) throws Exception {
+        return client.getData().forPath(path);
+    }
+
+    public Stat getStat(final String path) throws Exception {
+        Stat stat = new Stat();
+        client.getData().storingStatIn(stat).forPath(path);
+        return stat;
     }
 }
