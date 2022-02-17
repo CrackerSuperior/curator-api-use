@@ -5,6 +5,8 @@ import org.apache.curator.framework.api.BackgroundCallback;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.data.Stat;
 
+import java.util.List;
+
 @SuppressWarnings("unused")
 public class CuratorNode {
 
@@ -223,5 +225,15 @@ public class CuratorNode {
      */
     public boolean exists(final String path) throws Exception {
         return client.checkExists().forPath(path) != null;
+    }
+
+    /**
+     * Gets all child node paths of a node.
+     * @param path ZNode path
+     * @return node list
+     * @throws Exception exception
+     */
+    public List<String> getChildren(final String path) throws Exception {
+        return client.getChildren().forPath(path);
     }
 }

@@ -122,4 +122,19 @@ public class CuratorNodeTest {
             System.out.println(e.getMessage());
         }
     }
+
+    @Test
+    public void getChildren() {
+        String connectString = "localhost:2181";
+        String path = "/test";
+        try {
+            RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+            CuratorSession curatorSession = new CuratorSession();
+            CuratorFramework client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy);
+            CuratorNode curatorNode = new CuratorNode(client);
+            curatorNode.getChildren(path).forEach(System.out::println);
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
 }
