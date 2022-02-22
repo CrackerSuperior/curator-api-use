@@ -3,4 +3,837 @@
 :toc-title: curator API 的简单使用
 
 == 简述
+Curator是Netflix公司开源的一套zookeeper客户端框架，解决了很多Zookeeper客户端非常底层的细节开发工作，包括连接重连、反复注册Watcher和NodeExistsException异常等等。
 
+== Curator 的包
+
+* curator-framework：对zookeeper的底层api的一些封装
+* curator-client：提供一些客户端的操作，例如重试策略等
+* curator-recipes：封装了一些高级特性，如：Cache事件监听、选举、分布式锁、分布式计数器、分布式Barrier等
+
+NOTE: Curator 与 zookeeper 之间会有版本兼容性问题
+
+== Curator 的基本 API
+
+=== 前置准备
+
+[[pom.xml]]
+[source, xml]
+.pom.xml
+----
+<dependency>
+    <groupId>org.apache.curator</groupId>
+    <artifactId>curator-recipes</artifactId>
+    <version>5.1.0</version>
+</dependency>
+----
+
+=== 创建会话
+
+NOTE: Curator 采用的是Fluent风格式编程(Netty也是)，由于本人写单元测试的时候想偷懒，包装了一下，虽然会损失Fluent风格的灵活性，但不妨碍我们仅仅学习 API 的使用。
+
+Curator提供两种方式创建会话，一种是静态方法newClient，一种是使用Fluent风格的Api，前者和下面的代码一样仅仅是对后者的一种包装，这里不演示前者；
+
+不带命名空间建立连接::
+
+[[createClient1]]
+[source, java]
+.CuratorSession.java
+----
+package com.cracker.curator.api.session;
+
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+
+public class CuratorSession {
+
+    /**
+     * Initialize the Client.
+     * @param connectString zookeeper connectString:"[path:port]+"
+     * @param sessionTimeoutMs session timeout
+     * @param connectionTimeoutMs connection timeout
+     * @param retryPolicy retry policy
+     * @return initialize the client
+     */
+    public CuratorFramework createClient(final String connectString, final int sessionTimeoutMs, final int connectionTimeoutMs, final RetryPolicy retryPolicy) {
+        return CuratorFrameworkFactory.builder()
+                .connectString(connectString)
+                .sessionTimeoutMs(sessionTimeoutMs)
+                .connectionTimeoutMs(connectionTimeoutMs)
+                .retryPolicy(retryPolicy)
+                .build();
+    }
+}
+
+----
+
+带命名空间建立连接::
+与上面不同的是，带命名空间建立连接会使所有的操作都在该命名空间下，这可以实现不同的Zookeeper的业务之间的隔离
+
+[[createClient2]]
+[source, java]
+.CuratorSession.java
+----
+package com.cracker.curator.api.session;
+
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+
+public class CuratorSession {
+
+    /**
+     * Initialize the Client.
+     * @param connectString zookeeper paths
+     * @param sessionTimeoutMs session timeout
+     * @param connectionTimeoutMs connection timeout
+     * @param retryPolicy retry policy
+     * @param namespace If you specify a Zookeeper root path, all the operations based on the client are under the namespace node
+     * @return initialize the client
+     */
+    public CuratorFramework createClient(final String connectString, final int sessionTimeoutMs, final int connectionTimeoutMs, final RetryPolicy retryPolicy, final String namespace) {
+        return CuratorFrameworkFactory.builder()
+                .connectString(connectString)
+                .sessionTimeoutMs(sessionTimeoutMs)
+                .connectionTimeoutMs(connectionTimeoutMs)
+                .retryPolicy(retryPolicy)
+                .namespace(namespace)
+                .build();
+    }
+}
+
+----
+
+=== 节点管理
+
+创建节点::
+
+[[create]]
+[source, java]
+.CuratorNode.java
+----
+package com.cracker.curator.api.node;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.BackgroundCallback;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.data.Stat;
+
+import java.util.List;
+
+@SuppressWarnings("unused")
+public class CuratorNode {
+
+    private final CuratorFramework client;
+
+    public CuratorNode(final CuratorFramework client) {
+        this.client = client;
+        this.client.start();
+    }
+
+    /**
+     * Create a node with initial empty content.
+     * @param path ZNode path
+     * @return context
+     * @throws Exception exception
+     */
+    public String create(final String path) throws Exception {
+        return client.create().forPath(path);
+    }
+
+    /**
+     * Create a node with initialization.
+     * @param path ZNode path
+     * @param data node data
+     * @return context
+     * @throws Exception exception
+     */
+    public String create(final String path, final byte[] data) throws Exception {
+        return client.create().forPath(path, data);
+    }
+
+    /**
+     * Creates a node with the creation mode specified and the content empty.
+     * @param path ZNode path
+     * @param createMode create mode
+     * @return context
+     * @throws Exception exception
+     */
+    public String create(final String path, final CreateMode createMode) throws Exception {
+        return client.create().withMode(createMode).forPath(path);
+    }
+
+    /**
+     * Creates a node with the creation mode specified and the content empty.
+     * @param path ZNode path
+     * @param data node data
+     * @param createMode create mode
+     * @return context
+     * @throws Exception exception
+     */
+    public String create(final String path, final byte[] data, final CreateMode createMode) throws Exception {
+        return client.create().withMode(createMode).forPath(path, data);
+    }
+
+    /**
+     * Create a node, attach initialization content, and automatically recursively create the parent node.
+     * @param path ZNode path
+     * @param data node data
+     * @param creatingParentContainersIfNeeded Whether you need to automatically recursively create a parent node
+     * @return context
+     * @throws Exception exception
+     */
+    public String create(final String path, final byte[] data, final boolean creatingParentContainersIfNeeded) throws Exception {
+        return creatingParentContainersIfNeeded
+                ? client.create().creatingParentContainersIfNeeded().forPath(path, data)
+                : create(path, data);
+    }
+
+    /**
+     * Create a node, specify the creation mode, attach initialization content, and automatically recursively create the parent node.
+     * @param path ZNode path
+     * @param data node data
+     * @param createMode create mode
+     * @param creatingParentContainersIfNeeded Whether you need to automatically recursively create a parent node
+     * @return context
+     * @throws Exception exception
+     */
+    public String create(final String path, final byte[] data, final CreateMode createMode, final boolean creatingParentContainersIfNeeded) throws Exception {
+        return creatingParentContainersIfNeeded
+                ? client.create().creatingParentContainersIfNeeded().withMode(createMode).forPath(path, data)
+                : create(path, data, createMode);
+    }
+}
+----
+
+删除节点::
+[[delete]]
+[source, java]
+.CreateMode.java
+----
+package com.cracker.curator.api.node;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.BackgroundCallback;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.data.Stat;
+
+import java.util.List;
+
+@SuppressWarnings("unused")
+public class CuratorNode {
+
+    private final CuratorFramework client;
+
+    public CuratorNode(final CuratorFramework client) {
+        this.client = client;
+        this.client.start();
+    }
+
+    /**
+     * Deleting a node.
+     *
+     * <p>Note that this method can only remove the leaf node, otherwise an exception will be thrown.
+     * @param path ZNode path
+     * @return void
+     * @throws Exception exception
+     */
+    public Void delete(final String path) throws Exception {
+        return client.delete().forPath(path);
+    }
+
+    /**
+     * Delete a node and recursively delete all of its children.
+     * @param path ZNode path
+     * @param deletingChildrenIfNeeded Whether to recursively delete all of its children
+     * @return void
+     * @throws Exception exception
+     */
+    @SuppressWarnings("all")
+    public Void delete(final String path, final boolean deletingChildrenIfNeeded) throws Exception {
+        return deletingChildrenIfNeeded
+                ? client.delete().deletingChildrenIfNeeded().forPath(path)
+                : delete(path);
+    }
+
+    /**
+     * Deletes a node to force the specified version to be deleted.
+     * @param path ZNode path
+     * @param version specify the version
+     * @return void
+     * @throws Exception exception
+     */
+    @SuppressWarnings("all")
+    public Void delete(final String path, final int version) throws Exception {
+        return client.delete().withVersion(version).forPath(path);
+    }
+
+    /**
+     * A callback function after a node is deleted.
+     * @param path ZNode path
+     * @param callback callback function
+     * @return void
+     * @throws Exception exception
+     */
+    @SuppressWarnings("all")
+    public Void delete(final String path, final BackgroundCallback callback) throws Exception {
+        return client.delete().inBackground(callback).forPath(path);
+    }
+
+    /**
+     * Deleting a node is mandatory.
+     *
+     * <p>A guaranteed() interface is a safeguard, and as long as a client session is valid, a Curator will continue to
+     * remove nodes in the background until they are successfully removed.
+     * @param path ZNode path
+     * @return void
+     * @throws Exception exception
+     */
+    public Void deleteGuaranteed(final String path) throws Exception {
+        return client.delete().guaranteed().forPath(path);
+    }
+
+    public Void deleteGuaranteed(final String path, final boolean deletingChildrenIfNeeded) throws Exception {
+        return deletingChildrenIfNeeded
+                ? client.delete().guaranteed().deletingChildrenIfNeeded().forPath(path)
+                : deleteGuaranteed(path);
+    }
+
+    @SuppressWarnings("all")
+    public Void deleteGuaranteed(final String path, final boolean deletingChildrenIfNeeded, final int version) throws Exception {
+        return deletingChildrenIfNeeded
+                ? client.delete().guaranteed().deletingChildrenIfNeeded().withVersion(version).forPath(path)
+                : client.delete().guaranteed().withVersion(version).forPath(path);
+    }
+
+    @SuppressWarnings("all")
+    public Void deleteGuaranteed(final String path, final BackgroundCallback callback) throws Exception {
+        return client.delete().guaranteed().inBackground(callback).forPath(path);
+    }
+}
+----
+
+修改节点::
+[[update]]
+[source, java]
+.CuratorNode.java
+----
+package com.cracker.curator.api.node;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.BackgroundCallback;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.data.Stat;
+
+import java.util.List;
+
+@SuppressWarnings("unused")
+public class CuratorNode {
+
+    private final CuratorFramework client;
+
+    public CuratorNode(final CuratorFramework client) {
+        this.client = client;
+        this.client.start();
+    }
+
+    /**
+     * Updates the data content of a node.
+     * @param path ZNode path
+     * @param data updated data
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */
+    public Stat setData(final String path, final byte[] data) throws Exception {
+        return client.setData().forPath(path, data);
+    }
+
+    /**
+     * Updates the data content of a node to force the specified version to be updated.
+     * @param path ZNode path
+     * @param data updated data
+     * @param version node version
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */
+    @SuppressWarnings("all")
+    public Stat setData(final String path, final byte[] data, final int version) throws Exception {
+        return client.setData().withVersion(version).forPath(path, data);
+    }
+}
+
+----
+
+获得数据::
+[[getData]]
+[source, java]
+.CuratorNode.java
+----
+package com.cracker.curator.api.node;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.BackgroundCallback;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.data.Stat;
+
+import java.util.List;
+
+@SuppressWarnings("unused")
+public class CuratorNode {
+
+    private final CuratorFramework client;
+
+    public CuratorNode(final CuratorFramework client) {
+        this.client = client;
+        this.client.start();
+    }
+
+    /**
+     * Reads the data content of a node.
+     * @param path ZNode path
+     * @return node data
+     * @throws Exception exception
+     */
+    public byte[] getData(final String path) throws Exception {
+        return client.getData().forPath(path);
+    }
+
+    /**
+     * The stat for this node is obtained.
+     * @param path ZNode path
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */
+    public Stat getStat(final String path) throws Exception {
+        Stat stat = new Stat();
+        client.getData().storingStatIn(stat).forPath(path);
+        return stat;
+    }
+}
+
+----
+
+节点存在::
+[[exists]]
+[source, java]
+.CuratorNode.java
+----
+package com.cracker.curator.api.node;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.BackgroundCallback;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.data.Stat;
+
+import java.util.List;
+
+@SuppressWarnings("unused")
+public class CuratorNode {
+
+    private final CuratorFramework client;
+
+    public CuratorNode(final CuratorFramework client) {
+        this.client = client;
+        this.client.start();
+    }
+
+    /**
+     * Check whether the node exists.
+     * @param path ZNode path
+     * @return Check whether the node exists
+     * @throws Exception exception
+     */
+    public boolean exists(final String path) throws Exception {
+        return client.checkExists().forPath(path) != null;
+    }
+}
+----
+
+获得子节点::
+[[getChildren]]
+[source, java]
+.CuratorNode.java
+----
+package com.cracker.curator.api.node;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.BackgroundCallback;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.data.Stat;
+
+import java.util.List;
+
+@SuppressWarnings("unused")
+public class CuratorNode {
+
+    private final CuratorFramework client;
+
+    public CuratorNode(final CuratorFramework client) {
+        this.client = client;
+        this.client.start();
+    }
+
+    /**
+     * Gets all child node paths of a node.
+     * @param path ZNode path
+     * @return node list
+     * @throws Exception exception
+     */
+    public List<String> getChildren(final String path) throws Exception {
+        return client.getChildren().forPath(path);
+    }
+}
+
+----
+
+=== 事件监听
+
+在zookeeper3.6版本之前，Curator 提供了三种Watcher来监听节点的变化
+
+* PathChildCache：监视一个路径下子结点的创建、删除、更新。
+* NodeCache：监视当前结点的创建、更新、删除，并将结点的数据缓存在本地。
+* TreeCache：PathChildCache和NodeCache的“合体”，监视路径下的创建、更新、删除事件，并缓存路径下所有孩子结点的数据。
+
+但是在zookeeper3.6版本之后，只提供了一个CuratorCache来实现事件订阅。
+
+==== 普通事件监听
+普通事件订阅::
+普通的事件订阅，就是使用如getData、exists等命令添加的CuratorWatcher机制。这种方式触发的事件，只会响应一次。
+
+[[CuratorWatch]]
+[source, java]
+.CuratorWatch.java
+----
+package com.cracker.curator.api.watch;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.CuratorWatcher;
+
+public class CuratorWatch {
+
+    private final CuratorFramework client;
+
+    public CuratorWatch(final CuratorFramework client) {
+        this.client = client;
+    }
+
+    public CuratorWatcher normalWatcher(final CuratorWatcher watcher) {
+        return watcher;
+    }
+}
+
+----
+
+[[CuratorNodeTest.watch1]]
+[source, java]
+.CuratorNodeTest.java
+----
+package com.cracker.curator.api.node;
+
+import com.cracker.curator.api.cache.listenter.CuratorCacheListen;
+import com.cracker.curator.api.session.CuratorSession;
+import com.cracker.curator.api.watch.CuratorWatch;
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.CuratorWatcher;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.WatchedEvent;
+import org.junit.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+
+public class CuratorNodeTest {
+
+    CuratorFramework client;
+
+    CuratorNode curatorNode;
+
+    private void init(String namespace) {
+        String connectString = "localhost:2181";
+        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+        CuratorSession curatorSession = new CuratorSession();
+        client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy, namespace);
+        curatorNode = new CuratorNode(client);
+    }
+
+    private void init() {
+        String connectString = "localhost:2181";
+        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+        CuratorSession curatorSession = new CuratorSession();
+        client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy);
+        curatorNode = new CuratorNode(client);
+    }
+
+    private void close() {
+        client.close();
+    }
+
+    /**
+     * It only responds once.
+     */
+    @Test
+    public void normalWatcher1() {
+        init();
+        CuratorWatch watch = new CuratorWatch(client);
+        CuratorWatcher watcher = watch.normalWatcher(watchedEvent -> {
+            System.out.println("Listen for an event: "+watchedEvent.toString());
+        });
+        try {
+            String path = curatorNode.create("/listener","I'Listener".getBytes());
+            String data = new String(client.getData().usingWatcher(watcher).forPath(path));
+            System.out.println(path + " Value of a node: " + data);
+            //first updated
+            curatorNode.setData(path, " change listener ".getBytes());
+            //second updated
+            curatorNode.setData(path, " change listener! ".getBytes());
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
+}
+
+----
+
+如果希望事件监听是持久化的，则改造代码如下::
+[[CuratorNodeTest.watch2]]
+[source, java]
+.CuratorNodeTest.java
+----
+package com.cracker.curator.api.node;
+
+import com.cracker.curator.api.cache.listenter.CuratorCacheListen;
+import com.cracker.curator.api.session.CuratorSession;
+import com.cracker.curator.api.watch.CuratorWatch;
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.CuratorWatcher;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.WatchedEvent;
+import org.junit.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+
+public class CuratorNodeTest {
+
+    CuratorFramework client;
+
+    CuratorNode curatorNode;
+
+    private void init(String namespace) {
+        String connectString = "localhost:2181";
+        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+        CuratorSession curatorSession = new CuratorSession();
+        client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy, namespace);
+        curatorNode = new CuratorNode(client);
+    }
+
+    private void init() {
+        String connectString = "localhost:2181";
+        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+        CuratorSession curatorSession = new CuratorSession();
+        client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy);
+        curatorNode = new CuratorNode(client);
+    }
+
+    private void close() {
+        client.close();
+    }
+
+    /**
+     * Event listeners are persistent.
+     */
+    @Test
+    public void normalWatcher2() {
+        init();
+        CuratorWatch watch = new CuratorWatch(client);
+        CuratorWatcher watcher = watch.normalWatcher(new CuratorWatcher() {
+            @Override
+            public void process(WatchedEvent watchedEvent) throws Exception {
+                System.out.println("Listen for an event: "+ watchedEvent.toString());
+                client.checkExists().usingWatcher(this).forPath("/listener");
+            }
+        });
+        try {
+            String path = curatorNode.create("/listener","I'Listener".getBytes());
+            String data = new String(client.getData().usingWatcher(watcher).forPath(path));
+            System.out.println(path + " Value of a node: " + data);
+            //first updated
+            curatorNode.setData(path, " change listener ".getBytes());
+            //The thread must be put to sleep for a while, otherwise the listener will not have time to respond
+            Thread.sleep(3000);
+            //second updated
+            curatorNode.setData(path, " change listener! ".getBytes());
+            //System.in.read();
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+    }
+}
+----
+
+==== CuratorCache API说明
+
+在Curator包中，提供了另外一个可以持续订阅的API，CuratorCacheListener
+
+CuratorCacheListener是基于CuratorCache缓存实现的监听器，CuratorCache对Zookeeper事件监听进行了封装，能够自动处理反复注册监听，在使用CuratorListener时，首选需要构建CuratorCache缓存实例，具体定义如下：
+
+----
+CuratorCache.build(CuratorFramework client, String path, Options... options)
+
+Parameters:
+client - the client
+path - path to watch
+options - empty or one or more options
+----
+
+options有三个选项::
+[[CuratorCache.Options]]
+[source, java]
+.Options.java
+----
+enum Options
+{
+    /**
+    * Normally the entire tree of nodes starting at the given node are cached. This option
+    * causes only the given node to be cached (i.e. a single node cache)
+    单节点缓存
+    */
+    SINGLE_NODE_CACHE,
+
+    /**
+    * Decompress data via {@link org.apache.curator.framework.api.GetDataBuilder#decompressed()}
+    对数据进行压缩
+    */
+    COMPRESSED_DATA,
+
+    /**
+    * Normally, when the cache is closed via {@link CuratorCache#close()}, the storage is cleared
+    * via {@link CuratorCacheStorage#clear()}. This option prevents the storage from being cleared.
+    关闭后不清理缓存
+    */
+    DO_NOT_CLEAR_ON_CLOSE
+}
+----
+
+CuratorCache实现事件订阅::
+
+[[CuratorCacheListen]]
+[source, java]
+.CuratorCacheListen.java
+----
+package com.cracker.curator.api.cache.listenter;
+
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.recipes.cache.CuratorCache;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
+
+public class CuratorCacheListen {
+
+    private final CuratorCache curatorCache;
+
+    public CuratorCacheListen(final CuratorFramework client, final String path) {
+        this.curatorCache = CuratorCache.build(client, path, CuratorCache.Options.SINGLE_NODE_CACHE);
+    }
+
+    public void addListener(final CuratorCacheListener listener) {
+        curatorCache.listenable().addListener(listener);
+        curatorCache.start();
+    }
+}
+
+----
+
+[[CuratorNodeTest.Listen]]
+[source, java]
+.CuratorNodeTest.java
+----
+package com.cracker.curator.api.node;
+
+import com.cracker.curator.api.cache.listenter.CuratorCacheListen;
+import com.cracker.curator.api.session.CuratorSession;
+import com.cracker.curator.api.watch.CuratorWatch;
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.api.CuratorWatcher;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
+import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.WatchedEvent;
+import org.junit.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+
+public class CuratorNodeTest {
+
+    CuratorFramework client;
+
+    CuratorNode curatorNode;
+
+    private void init(String namespace) {
+        String connectString = "localhost:2181";
+        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+        CuratorSession curatorSession = new CuratorSession();
+        client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy, namespace);
+        curatorNode = new CuratorNode(client);
+    }
+
+    private void init() {
+        String connectString = "localhost:2181";
+        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
+        CuratorSession curatorSession = new CuratorSession();
+        client = curatorSession.createClient(connectString, 5000, 5000, retryPolicy);
+        curatorNode = new CuratorNode(client);
+    }
+
+    private void close() {
+        client.close();
+    }
+
+    @Test
+    public void curatorCacheListen() {
+        init();
+        String path = "/addListener";
+        CountDownLatch countDownLatch = new CountDownLatch(3);
+        CuratorCacheListen curatorCacheListen = new CuratorCacheListen(client, path);
+        curatorCacheListen.addListener(CuratorCacheListener
+                .builder().forAll((type, oldNode, newNode) -> {
+                    System.out.println("event type: " + type + "\n\rold node" + oldNode + "\n\rnew node" + newNode);
+//                .builder().forChanges((oldNode, newNode) -> {
+//                    System.out.println("\n\rold node" + oldNode + "\n\rnew node" + newNode);
+                }).forInitialized(() -> {
+                    System.out.println("initialize");
+                }).build());
+        try {
+            //for (int i = 0; i < 100; i++) {
+                curatorNode.create(path);
+                countDownLatch.countDown();
+                //Thread.sleep(1);
+                //curatorNode.setData(path, ("Hello" + i).getBytes());
+            curatorNode.setData(path, "Hello".getBytes());
+                countDownLatch.countDown();
+                curatorNode.delete(path);
+                countDownLatch.countDown();
+                countDownLatch.await();
+            //}
+            //System.in.read();
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
+        }
+
+    }
+}
+----
+
+== 5. 源代码
+5.1 github仓库地址::
+https://github.com/CrackerSuperior/curator-api-use[curator-api-use]
+5.2 git::
+https://github.com/CrackerSuperior/curator-api-use.git

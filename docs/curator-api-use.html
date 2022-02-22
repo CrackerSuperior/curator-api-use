@@ -443,6 +443,16 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div id="toctitle">curator API 的简单使用</div>
 <ul class="sectlevel1">
 <li><a href="#_简述">简述</a></li>
+<li><a href="#_curator_的包">Curator 的包</a></li>
+<li><a href="#_curator_的基本_api">Curator 的基本 API</a>
+<ul class="sectlevel2">
+<li><a href="#_前置准备">前置准备</a></li>
+<li><a href="#_创建会话">创建会话</a></li>
+<li><a href="#_节点管理">节点管理</a></li>
+<li><a href="#_事件监听">事件监听</a></li>
+</ul>
+</li>
+<li><a href="#_5_源代码">5. 源代码</a></li>
 </ul>
 </div>
 </div>
@@ -450,13 +460,940 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="sect1">
 <h2 id="_简述">简述</h2>
 <div class="sectionbody">
+<div class="paragraph">
+<p>Curator是Netflix公司开源的一套zookeeper客户端框架，解决了很多Zookeeper客户端非常底层的细节开发工作，包括连接重连、反复注册Watcher和NodeExistsException异常等等。</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_curator_的包">Curator 的包</h2>
+<div class="sectionbody">
+<div class="ulist">
+<ul>
+<li>
+<p>curator-framework：对zookeeper的底层api的一些封装</p>
+</li>
+<li>
+<p>curator-client：提供一些客户端的操作，例如重试策略等</p>
+</li>
+<li>
+<p>curator-recipes：封装了一些高级特性，如：Cache事件监听、选举、分布式锁、分布式计数器、分布式Barrier等</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+Curator 与 zookeeper 之间会有版本兼容性问题
+</td>
+</tr>
+</table>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_curator_的基本_api">Curator 的基本 API</h2>
+<div class="sectionbody">
+<div class="sect2">
+<h3 id="_前置准备">前置准备</h3>
+<div id="pom.xml" class="listingblock">
+<div class="title">pom.xml</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="xml"><span style="color:#070;font-weight:bold">&lt;dependency&gt;</span>
+    <span style="color:#070;font-weight:bold">&lt;groupId&gt;</span>org.apache.curator<span style="color:#070;font-weight:bold">&lt;/groupId&gt;</span>
+    <span style="color:#070;font-weight:bold">&lt;artifactId&gt;</span>curator-recipes<span style="color:#070;font-weight:bold">&lt;/artifactId&gt;</span>
+    <span style="color:#070;font-weight:bold">&lt;version&gt;</span>5.1.0<span style="color:#070;font-weight:bold">&lt;/version&gt;</span>
+<span style="color:#070;font-weight:bold">&lt;/dependency&gt;</span></code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_创建会话">创建会话</h3>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<div class="title">Note</div>
+</td>
+<td class="content">
+Curator 采用的是Fluent风格式编程(Netty也是)，由于本人写单元测试的时候想偷懒，包装了一下，虽然会损失Fluent风格的灵活性，但不妨碍我们仅仅学习 API 的使用。
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Curator提供两种方式创建会话，一种是静态方法newClient，一种是使用Fluent风格的Api，前者和下面的代码一样仅仅是对后者的一种包装，这里不演示前者；</p>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">不带命名空间建立连接</dt>
+</dl>
+</div>
+<div id="createClient1" class="listingblock">
+<div class="title">CuratorSession.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.session</span>;
 
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.RetryPolicy</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFrameworkFactory</span>;
+
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorSession</span> {
+
+    <span style="color:#777">/**
+     * Initialize the Client.
+     * @param connectString zookeeper connectString:&quot;[path:port]+&quot;
+     * @param sessionTimeoutMs session timeout
+     * @param connectionTimeoutMs connection timeout
+     * @param retryPolicy retry policy
+     * @return initialize the client
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> CuratorFramework createClient(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> connectString, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">int</span> sessionTimeoutMs, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">int</span> connectionTimeoutMs, <span style="color:#088;font-weight:bold">final</span> RetryPolicy retryPolicy) {
+        <span style="color:#080;font-weight:bold">return</span> CuratorFrameworkFactory.builder()
+                .connectString(connectString)
+                .sessionTimeoutMs(sessionTimeoutMs)
+                .connectionTimeoutMs(connectionTimeoutMs)
+                .retryPolicy(retryPolicy)
+                .build();
+    }
+}</code></pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">带命名空间建立连接</dt>
+<dd>
+<p>与上面不同的是，带命名空间建立连接会使所有的操作都在该命名空间下，这可以实现不同的Zookeeper的业务之间的隔离</p>
+</dd>
+</dl>
+</div>
+<div id="createClient2" class="listingblock">
+<div class="title">CuratorSession.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.session</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.RetryPolicy</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFrameworkFactory</span>;
+
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorSession</span> {
+
+    <span style="color:#777">/**
+     * Initialize the Client.
+     * @param connectString zookeeper paths
+     * @param sessionTimeoutMs session timeout
+     * @param connectionTimeoutMs connection timeout
+     * @param retryPolicy retry policy
+     * @param namespace If you specify a Zookeeper root path, all the operations based on the client are under the namespace node
+     * @return initialize the client
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> CuratorFramework createClient(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> connectString, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">int</span> sessionTimeoutMs, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">int</span> connectionTimeoutMs, <span style="color:#088;font-weight:bold">final</span> RetryPolicy retryPolicy, <span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> namespace) {
+        <span style="color:#080;font-weight:bold">return</span> CuratorFrameworkFactory.builder()
+                .connectString(connectString)
+                .sessionTimeoutMs(sessionTimeoutMs)
+                .connectionTimeoutMs(connectionTimeoutMs)
+                .retryPolicy(retryPolicy)
+                .namespace(namespace)
+                .build();
+    }
+}</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_节点管理">节点管理</h3>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">创建节点</dt>
+</dl>
+</div>
+<div id="create" class="listingblock">
+<div class="title">CuratorNode.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.BackgroundCallback</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.data.Stat</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.List</span>;
+
+<span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">unused</span><span style="color:#710">&quot;</span></span>)
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNode</span> {
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#088;font-weight:bold">final</span> CuratorFramework client;
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorNode(<span style="color:#088;font-weight:bold">final</span> CuratorFramework client) {
+        <span style="color:#950">this</span>.client = client;
+        <span style="color:#950">this</span>.client.start();
+    }
+
+    <span style="color:#777">/**
+     * Create a node with initial empty content.
+     * @param path ZNode path
+     * @return context
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">String</span> create(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.create().forPath(path);
+    }
+
+    <span style="color:#777">/**
+     * Create a node with initialization.
+     * @param path ZNode path
+     * @param data node data
+     * @return context
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">String</span> create(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">byte</span><span style="color:#339;font-weight:bold">[]</span> data) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.create().forPath(path, data);
+    }
+
+    <span style="color:#777">/**
+     * Creates a node with the creation mode specified and the content empty.
+     * @param path ZNode path
+     * @param createMode create mode
+     * @return context
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">String</span> create(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> CreateMode createMode) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.create().withMode(createMode).forPath(path);
+    }
+
+    <span style="color:#777">/**
+     * Creates a node with the creation mode specified and the content empty.
+     * @param path ZNode path
+     * @param data node data
+     * @param createMode create mode
+     * @return context
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">String</span> create(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">byte</span><span style="color:#339;font-weight:bold">[]</span> data, <span style="color:#088;font-weight:bold">final</span> CreateMode createMode) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.create().withMode(createMode).forPath(path, data);
+    }
+
+    <span style="color:#777">/**
+     * Create a node, attach initialization content, and automatically recursively create the parent node.
+     * @param path ZNode path
+     * @param data node data
+     * @param creatingParentContainersIfNeeded Whether you need to automatically recursively create a parent node
+     * @return context
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">String</span> create(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">byte</span><span style="color:#339;font-weight:bold">[]</span> data, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">boolean</span> creatingParentContainersIfNeeded) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> creatingParentContainersIfNeeded
+                ? client.create().creatingParentContainersIfNeeded().forPath(path, data)
+                : create(path, data);
+    }
+
+    <span style="color:#777">/**
+     * Create a node, specify the creation mode, attach initialization content, and automatically recursively create the parent node.
+     * @param path ZNode path
+     * @param data node data
+     * @param createMode create mode
+     * @param creatingParentContainersIfNeeded Whether you need to automatically recursively create a parent node
+     * @return context
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">String</span> create(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">byte</span><span style="color:#339;font-weight:bold">[]</span> data, <span style="color:#088;font-weight:bold">final</span> CreateMode createMode, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">boolean</span> creatingParentContainersIfNeeded) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> creatingParentContainersIfNeeded
+                ? client.create().creatingParentContainersIfNeeded().withMode(createMode).forPath(path, data)
+                : create(path, data, createMode);
+    }
+}</code></pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">删除节点</dt>
+</dl>
+</div>
+<div id="delete" class="listingblock">
+<div class="title">CreateMode.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.BackgroundCallback</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.data.Stat</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.List</span>;
+
+<span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">unused</span><span style="color:#710">&quot;</span></span>)
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNode</span> {
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#088;font-weight:bold">final</span> CuratorFramework client;
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorNode(<span style="color:#088;font-weight:bold">final</span> CuratorFramework client) {
+        <span style="color:#950">this</span>.client = client;
+        <span style="color:#950">this</span>.client.start();
+    }
+
+    <span style="color:#777">/**
+     * Deleting a node.
+     *
+     * &lt;p&gt;Note that this method can only remove the leaf node, otherwise an exception will be thrown.
+     * @param path ZNode path
+     * @return void
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">Void</span> delete(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.delete().forPath(path);
+    }
+
+    <span style="color:#777">/**
+     * Delete a node and recursively delete all of its children.
+     * @param path ZNode path
+     * @param deletingChildrenIfNeeded Whether to recursively delete all of its children
+     * @return void
+     * @throws Exception exception
+     */</span>
+    <span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">all</span><span style="color:#710">&quot;</span></span>)
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">Void</span> delete(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">boolean</span> deletingChildrenIfNeeded) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> deletingChildrenIfNeeded
+                ? client.delete().deletingChildrenIfNeeded().forPath(path)
+                : delete(path);
+    }
+
+    <span style="color:#777">/**
+     * Deletes a node to force the specified version to be deleted.
+     * @param path ZNode path
+     * @param version specify the version
+     * @return void
+     * @throws Exception exception
+     */</span>
+    <span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">all</span><span style="color:#710">&quot;</span></span>)
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">Void</span> delete(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">int</span> version) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.delete().withVersion(version).forPath(path);
+    }
+
+    <span style="color:#777">/**
+     * A callback function after a node is deleted.
+     * @param path ZNode path
+     * @param callback callback function
+     * @return void
+     * @throws Exception exception
+     */</span>
+    <span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">all</span><span style="color:#710">&quot;</span></span>)
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">Void</span> delete(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> BackgroundCallback callback) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.delete().inBackground(callback).forPath(path);
+    }
+
+    <span style="color:#777">/**
+     * Deleting a node is mandatory.
+     *
+     * &lt;p&gt;A guaranteed() interface is a safeguard, and as long as a client session is valid, a Curator will continue to
+     * remove nodes in the background until they are successfully removed.
+     * @param path ZNode path
+     * @return void
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">Void</span> deleteGuaranteed(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.delete().guaranteed().forPath(path);
+    }
+
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">Void</span> deleteGuaranteed(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">boolean</span> deletingChildrenIfNeeded) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> deletingChildrenIfNeeded
+                ? client.delete().guaranteed().deletingChildrenIfNeeded().forPath(path)
+                : deleteGuaranteed(path);
+    }
+
+    <span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">all</span><span style="color:#710">&quot;</span></span>)
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">Void</span> deleteGuaranteed(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">boolean</span> deletingChildrenIfNeeded, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">int</span> version) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> deletingChildrenIfNeeded
+                ? client.delete().guaranteed().deletingChildrenIfNeeded().withVersion(version).forPath(path)
+                : client.delete().guaranteed().withVersion(version).forPath(path);
+    }
+
+    <span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">all</span><span style="color:#710">&quot;</span></span>)
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">Void</span> deleteGuaranteed(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> BackgroundCallback callback) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.delete().guaranteed().inBackground(callback).forPath(path);
+    }
+}</code></pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">修改节点</dt>
+</dl>
+</div>
+<div id="update" class="listingblock">
+<div class="title">CuratorNode.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.BackgroundCallback</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.data.Stat</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.List</span>;
+
+<span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">unused</span><span style="color:#710">&quot;</span></span>)
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNode</span> {
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#088;font-weight:bold">final</span> CuratorFramework client;
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorNode(<span style="color:#088;font-weight:bold">final</span> CuratorFramework client) {
+        <span style="color:#950">this</span>.client = client;
+        <span style="color:#950">this</span>.client.start();
+    }
+
+    <span style="color:#777">/**
+     * Updates the data content of a node.
+     * @param path ZNode path
+     * @param data updated data
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> Stat setData(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">byte</span><span style="color:#339;font-weight:bold">[]</span> data) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.setData().forPath(path, data);
+    }
+
+    <span style="color:#777">/**
+     * Updates the data content of a node to force the specified version to be updated.
+     * @param path ZNode path
+     * @param data updated data
+     * @param version node version
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */</span>
+    <span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">all</span><span style="color:#710">&quot;</span></span>)
+    <span style="color:#088;font-weight:bold">public</span> Stat setData(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">byte</span><span style="color:#339;font-weight:bold">[]</span> data, <span style="color:#088;font-weight:bold">final</span> <span style="color:#339;font-weight:bold">int</span> version) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.setData().withVersion(version).forPath(path, data);
+    }
+}</code></pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">获得数据</dt>
+</dl>
+</div>
+<div id="getData" class="listingblock">
+<div class="title">CuratorNode.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.BackgroundCallback</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.data.Stat</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.List</span>;
+
+<span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">unused</span><span style="color:#710">&quot;</span></span>)
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNode</span> {
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#088;font-weight:bold">final</span> CuratorFramework client;
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorNode(<span style="color:#088;font-weight:bold">final</span> CuratorFramework client) {
+        <span style="color:#950">this</span>.client = client;
+        <span style="color:#950">this</span>.client.start();
+    }
+
+    <span style="color:#777">/**
+     * Reads the data content of a node.
+     * @param path ZNode path
+     * @return node data
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">byte</span><span style="color:#339;font-weight:bold">[]</span> getData(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.getData().forPath(path);
+    }
+
+    <span style="color:#777">/**
+     * The stat for this node is obtained.
+     * @param path ZNode path
+     * @return The stat for this node is obtained
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> Stat getStat(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        Stat stat = <span style="color:#080;font-weight:bold">new</span> Stat();
+        client.getData().storingStatIn(stat).forPath(path);
+        <span style="color:#080;font-weight:bold">return</span> stat;
+    }
+}</code></pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">节点存在</dt>
+</dl>
+</div>
+<div id="exists" class="listingblock">
+<div class="title">CuratorNode.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.BackgroundCallback</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.data.Stat</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.List</span>;
+
+<span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">unused</span><span style="color:#710">&quot;</span></span>)
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNode</span> {
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#088;font-weight:bold">final</span> CuratorFramework client;
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorNode(<span style="color:#088;font-weight:bold">final</span> CuratorFramework client) {
+        <span style="color:#950">this</span>.client = client;
+        <span style="color:#950">this</span>.client.start();
+    }
+
+    <span style="color:#777">/**
+     * Check whether the node exists.
+     * @param path ZNode path
+     * @return Check whether the node exists
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">boolean</span> exists(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.checkExists().forPath(path) != <span style="color:#069">null</span>;
+    }
+}</code></pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">获得子节点</dt>
+</dl>
+</div>
+<div id="getChildren" class="listingblock">
+<div class="title">CuratorNode.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.BackgroundCallback</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.data.Stat</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.List</span>;
+
+<span style="color:#007">@SuppressWarnings</span>(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">unused</span><span style="color:#710">&quot;</span></span>)
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNode</span> {
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#088;font-weight:bold">final</span> CuratorFramework client;
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorNode(<span style="color:#088;font-weight:bold">final</span> CuratorFramework client) {
+        <span style="color:#950">this</span>.client = client;
+        <span style="color:#950">this</span>.client.start();
+    }
+
+    <span style="color:#777">/**
+     * Gets all child node paths of a node.
+     * @param path ZNode path
+     * @return node list
+     * @throws Exception exception
+     */</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#0a8;font-weight:bold">List</span>&lt;<span style="color:#0a8;font-weight:bold">String</span>&gt; getChildren(<span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+        <span style="color:#080;font-weight:bold">return</span> client.getChildren().forPath(path);
+    }
+}</code></pre>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_事件监听">事件监听</h3>
+<div class="paragraph">
+<p>在zookeeper3.6版本之前，Curator 提供了三种Watcher来监听节点的变化</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>PathChildCache：监视一个路径下子结点的创建、删除、更新。</p>
+</li>
+<li>
+<p>NodeCache：监视当前结点的创建、更新、删除，并将结点的数据缓存在本地。</p>
+</li>
+<li>
+<p>TreeCache：PathChildCache和NodeCache的“合体”，监视路径下的创建、更新、删除事件，并缓存路径下所有孩子结点的数据。</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>但是在zookeeper3.6版本之后，只提供了一个CuratorCache来实现事件订阅。</p>
+</div>
+<div class="sect3">
+<h4 id="_普通事件监听">普通事件监听</h4>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">普通事件订阅</dt>
+<dd>
+<p>普通的事件订阅，就是使用如getData、exists等命令添加的CuratorWatcher机制。这种方式触发的事件，只会响应一次。</p>
+</dd>
+</dl>
+</div>
+<div id="CuratorWatch" class="listingblock">
+<div class="title">CuratorWatch.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.watch</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.CuratorWatcher</span>;
+
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorWatch</span> {
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#088;font-weight:bold">final</span> CuratorFramework client;
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorWatch(<span style="color:#088;font-weight:bold">final</span> CuratorFramework client) {
+        <span style="color:#950">this</span>.client = client;
+    }
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorWatcher normalWatcher(<span style="color:#088;font-weight:bold">final</span> CuratorWatcher watcher) {
+        <span style="color:#080;font-weight:bold">return</span> watcher;
+    }
+}</code></pre>
+</div>
+</div>
+<div id="CuratorNodeTest.watch1" class="listingblock">
+<div class="title">CuratorNodeTest.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.cache.listenter.CuratorCacheListen</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.session.CuratorSession</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.watch.CuratorWatch</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.RetryPolicy</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.CuratorWatcher</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.recipes.cache.CuratorCacheListener</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.retry.ExponentialBackoffRetry</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.WatchedEvent</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.junit.Test</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.nio.charset.StandardCharsets</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.concurrent.CountDownLatch</span>;
+
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNodeTest</span> {
+
+    CuratorFramework client;
+
+    CuratorNode curatorNode;
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> init(<span style="color:#0a8;font-weight:bold">String</span> namespace) {
+        <span style="color:#0a8;font-weight:bold">String</span> connectString = <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">localhost:2181</span><span style="color:#710">&quot;</span></span>;
+        RetryPolicy retryPolicy = <span style="color:#080;font-weight:bold">new</span> ExponentialBackoffRetry(<span style="color:#00D">1000</span>, <span style="color:#00D">3</span>);
+        CuratorSession curatorSession = <span style="color:#080;font-weight:bold">new</span> CuratorSession();
+        client = curatorSession.createClient(connectString, <span style="color:#00D">5000</span>, <span style="color:#00D">5000</span>, retryPolicy, namespace);
+        curatorNode = <span style="color:#080;font-weight:bold">new</span> CuratorNode(client);
+    }
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> init() {
+        <span style="color:#0a8;font-weight:bold">String</span> connectString = <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">localhost:2181</span><span style="color:#710">&quot;</span></span>;
+        RetryPolicy retryPolicy = <span style="color:#080;font-weight:bold">new</span> ExponentialBackoffRetry(<span style="color:#00D">1000</span>, <span style="color:#00D">3</span>);
+        CuratorSession curatorSession = <span style="color:#080;font-weight:bold">new</span> CuratorSession();
+        client = curatorSession.createClient(connectString, <span style="color:#00D">5000</span>, <span style="color:#00D">5000</span>, retryPolicy);
+        curatorNode = <span style="color:#080;font-weight:bold">new</span> CuratorNode(client);
+    }
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> close() {
+        client.close();
+    }
+
+    <span style="color:#777">/**
+     * It only responds once.
+     */</span>
+    <span style="color:#007">@Test</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">void</span> normalWatcher1() {
+        init();
+        CuratorWatch watch = <span style="color:#080;font-weight:bold">new</span> CuratorWatch(client);
+        CuratorWatcher watcher = watch.normalWatcher(watchedEvent -&gt; {
+            <span style="color:#0a8;font-weight:bold">System</span>.out.println(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">Listen for an event: </span><span style="color:#710">&quot;</span></span>+watchedEvent.toString());
+        });
+        <span style="color:#080;font-weight:bold">try</span> {
+            <span style="color:#0a8;font-weight:bold">String</span> path = curatorNode.create(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">/listener</span><span style="color:#710">&quot;</span></span>,<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">I'Listener</span><span style="color:#710">&quot;</span></span>.getBytes());
+            <span style="color:#0a8;font-weight:bold">String</span> data = <span style="color:#080;font-weight:bold">new</span> <span style="color:#0a8;font-weight:bold">String</span>(client.getData().usingWatcher(watcher).forPath(path));
+            <span style="color:#0a8;font-weight:bold">System</span>.out.println(path + <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20"> Value of a node: </span><span style="color:#710">&quot;</span></span> + data);
+            <span style="color:#777">//first updated</span>
+            curatorNode.setData(path, <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20"> change listener </span><span style="color:#710">&quot;</span></span>.getBytes());
+            <span style="color:#777">//second updated</span>
+            curatorNode.setData(path, <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20"> change listener! </span><span style="color:#710">&quot;</span></span>.getBytes());
+        } <span style="color:#080;font-weight:bold">catch</span> (<span style="color:#C00;font-weight:bold">Exception</span> e) {
+            <span style="color:#0a8;font-weight:bold">System</span>.out.println(e.getMessage());
+        }
+    }
+}</code></pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">如果希望事件监听是持久化的，则改造代码如下</dt>
+</dl>
+</div>
+<div id="CuratorNodeTest.watch2" class="listingblock">
+<div class="title">CuratorNodeTest.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.cache.listenter.CuratorCacheListen</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.session.CuratorSession</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.watch.CuratorWatch</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.RetryPolicy</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.CuratorWatcher</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.recipes.cache.CuratorCacheListener</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.retry.ExponentialBackoffRetry</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.WatchedEvent</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.junit.Test</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.nio.charset.StandardCharsets</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.concurrent.CountDownLatch</span>;
+
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNodeTest</span> {
+
+    CuratorFramework client;
+
+    CuratorNode curatorNode;
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> init(<span style="color:#0a8;font-weight:bold">String</span> namespace) {
+        <span style="color:#0a8;font-weight:bold">String</span> connectString = <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">localhost:2181</span><span style="color:#710">&quot;</span></span>;
+        RetryPolicy retryPolicy = <span style="color:#080;font-weight:bold">new</span> ExponentialBackoffRetry(<span style="color:#00D">1000</span>, <span style="color:#00D">3</span>);
+        CuratorSession curatorSession = <span style="color:#080;font-weight:bold">new</span> CuratorSession();
+        client = curatorSession.createClient(connectString, <span style="color:#00D">5000</span>, <span style="color:#00D">5000</span>, retryPolicy, namespace);
+        curatorNode = <span style="color:#080;font-weight:bold">new</span> CuratorNode(client);
+    }
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> init() {
+        <span style="color:#0a8;font-weight:bold">String</span> connectString = <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">localhost:2181</span><span style="color:#710">&quot;</span></span>;
+        RetryPolicy retryPolicy = <span style="color:#080;font-weight:bold">new</span> ExponentialBackoffRetry(<span style="color:#00D">1000</span>, <span style="color:#00D">3</span>);
+        CuratorSession curatorSession = <span style="color:#080;font-weight:bold">new</span> CuratorSession();
+        client = curatorSession.createClient(connectString, <span style="color:#00D">5000</span>, <span style="color:#00D">5000</span>, retryPolicy);
+        curatorNode = <span style="color:#080;font-weight:bold">new</span> CuratorNode(client);
+    }
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> close() {
+        client.close();
+    }
+
+    <span style="color:#777">/**
+     * Event listeners are persistent.
+     */</span>
+    <span style="color:#007">@Test</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">void</span> normalWatcher2() {
+        init();
+        CuratorWatch watch = <span style="color:#080;font-weight:bold">new</span> CuratorWatch(client);
+        CuratorWatcher watcher = watch.normalWatcher(<span style="color:#080;font-weight:bold">new</span> CuratorWatcher() {
+            <span style="color:#007">@Override</span>
+            <span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">void</span> process(WatchedEvent watchedEvent) <span style="color:#088;font-weight:bold">throws</span> <span style="color:#C00;font-weight:bold">Exception</span> {
+                <span style="color:#0a8;font-weight:bold">System</span>.out.println(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">Listen for an event: </span><span style="color:#710">&quot;</span></span>+ watchedEvent.toString());
+                client.checkExists().usingWatcher(<span style="color:#950">this</span>).forPath(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">/listener</span><span style="color:#710">&quot;</span></span>);
+            }
+        });
+        <span style="color:#080;font-weight:bold">try</span> {
+            <span style="color:#0a8;font-weight:bold">String</span> path = curatorNode.create(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">/listener</span><span style="color:#710">&quot;</span></span>,<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">I'Listener</span><span style="color:#710">&quot;</span></span>.getBytes());
+            <span style="color:#0a8;font-weight:bold">String</span> data = <span style="color:#080;font-weight:bold">new</span> <span style="color:#0a8;font-weight:bold">String</span>(client.getData().usingWatcher(watcher).forPath(path));
+            <span style="color:#0a8;font-weight:bold">System</span>.out.println(path + <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20"> Value of a node: </span><span style="color:#710">&quot;</span></span> + data);
+            <span style="color:#777">//first updated</span>
+            curatorNode.setData(path, <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20"> change listener </span><span style="color:#710">&quot;</span></span>.getBytes());
+            <span style="color:#777">//The thread must be put to sleep for a while, otherwise the listener will not have time to respond</span>
+            <span style="color:#0a8;font-weight:bold">Thread</span>.sleep(<span style="color:#00D">3000</span>);
+            <span style="color:#777">//second updated</span>
+            curatorNode.setData(path, <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20"> change listener! </span><span style="color:#710">&quot;</span></span>.getBytes());
+            <span style="color:#777">//System.in.read();</span>
+        } <span style="color:#080;font-weight:bold">catch</span> (<span style="color:#C00;font-weight:bold">Exception</span> e) {
+            <span style="color:#0a8;font-weight:bold">System</span>.out.println(e.getMessage());
+        }
+    }
+}</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_curatorcache_api说明">CuratorCache API说明</h4>
+<div class="paragraph">
+<p>在Curator包中，提供了另外一个可以持续订阅的API，CuratorCacheListener</p>
+</div>
+<div class="paragraph">
+<p>CuratorCacheListener是基于CuratorCache缓存实现的监听器，CuratorCache对Zookeeper事件监听进行了封装，能够自动处理反复注册监听，在使用CuratorListener时，首选需要构建CuratorCache缓存实例，具体定义如下：</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>CuratorCache.build(CuratorFramework client, String path, Options... options)
+
+Parameters:
+client - the client
+path - path to watch
+options - empty or one or more options</pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">options有三个选项</dt>
+</dl>
+</div>
+<div id="CuratorCache.Options" class="listingblock">
+<div class="title">Options.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#339;font-weight:bold">enum</span> Options
+{
+    <span style="color:#777">/**
+    * Normally the entire tree of nodes starting at the given node are cached. This option
+    * causes only the given node to be cached (i.e. a single node cache)
+    单节点缓存
+    */</span>
+    SINGLE_NODE_CACHE,
+
+    <span style="color:#777">/**
+    * Decompress data via {@link org.apache.curator.framework.api.GetDataBuilder#decompressed()}
+    对数据进行压缩
+    */</span>
+    COMPRESSED_DATA,
+
+    <span style="color:#777">/**
+    * Normally, when the cache is closed via {@link CuratorCache#close()}, the storage is cleared
+    * via {@link CuratorCacheStorage#clear()}. This option prevents the storage from being cleared.
+    关闭后不清理缓存
+    */</span>
+    DO_NOT_CLEAR_ON_CLOSE
+}</code></pre>
+</div>
+</div>
+<div class="dlist">
+<dl>
+<dt class="hdlist1">CuratorCache实现事件订阅</dt>
+</dl>
+</div>
+<div id="CuratorCacheListen" class="listingblock">
+<div class="title">CuratorCacheListen.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.cache.listenter</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.recipes.cache.CuratorCache</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.recipes.cache.CuratorCacheListener</span>;
+
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorCacheListen</span> {
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#088;font-weight:bold">final</span> CuratorCache curatorCache;
+
+    <span style="color:#088;font-weight:bold">public</span> CuratorCacheListen(<span style="color:#088;font-weight:bold">final</span> CuratorFramework client, <span style="color:#088;font-weight:bold">final</span> <span style="color:#0a8;font-weight:bold">String</span> path) {
+        <span style="color:#950">this</span>.curatorCache = CuratorCache.build(client, path, CuratorCache.Options.SINGLE_NODE_CACHE);
+    }
+
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">void</span> addListener(<span style="color:#088;font-weight:bold">final</span> CuratorCacheListener listener) {
+        curatorCache.listenable().addListener(listener);
+        curatorCache.start();
+    }
+}</code></pre>
+</div>
+</div>
+<div id="CuratorNodeTest.Listen" class="listingblock">
+<div class="title">CuratorNodeTest.java</div>
+<div class="content">
+<pre class="CodeRay highlight"><code data-lang="java"><span style="color:#080;font-weight:bold">package</span> <span style="color:#707;font-weight:bold">com.cracker.curator.api.node</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.cache.listenter.CuratorCacheListen</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.session.CuratorSession</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">com.cracker.curator.api.watch.CuratorWatch</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.RetryPolicy</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.CuratorFramework</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.api.CuratorWatcher</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.framework.recipes.cache.CuratorCacheListener</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.curator.retry.ExponentialBackoffRetry</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.CreateMode</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.apache.zookeeper.WatchedEvent</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">org.junit.Test</span>;
+
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.nio.charset.StandardCharsets</span>;
+<span style="color:#080;font-weight:bold">import</span> <span style="color:#B44;font-weight:bold">java.util.concurrent.CountDownLatch</span>;
+
+<span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">class</span> <span style="color:#B06;font-weight:bold">CuratorNodeTest</span> {
+
+    CuratorFramework client;
+
+    CuratorNode curatorNode;
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> init(<span style="color:#0a8;font-weight:bold">String</span> namespace) {
+        <span style="color:#0a8;font-weight:bold">String</span> connectString = <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">localhost:2181</span><span style="color:#710">&quot;</span></span>;
+        RetryPolicy retryPolicy = <span style="color:#080;font-weight:bold">new</span> ExponentialBackoffRetry(<span style="color:#00D">1000</span>, <span style="color:#00D">3</span>);
+        CuratorSession curatorSession = <span style="color:#080;font-weight:bold">new</span> CuratorSession();
+        client = curatorSession.createClient(connectString, <span style="color:#00D">5000</span>, <span style="color:#00D">5000</span>, retryPolicy, namespace);
+        curatorNode = <span style="color:#080;font-weight:bold">new</span> CuratorNode(client);
+    }
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> init() {
+        <span style="color:#0a8;font-weight:bold">String</span> connectString = <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">localhost:2181</span><span style="color:#710">&quot;</span></span>;
+        RetryPolicy retryPolicy = <span style="color:#080;font-weight:bold">new</span> ExponentialBackoffRetry(<span style="color:#00D">1000</span>, <span style="color:#00D">3</span>);
+        CuratorSession curatorSession = <span style="color:#080;font-weight:bold">new</span> CuratorSession();
+        client = curatorSession.createClient(connectString, <span style="color:#00D">5000</span>, <span style="color:#00D">5000</span>, retryPolicy);
+        curatorNode = <span style="color:#080;font-weight:bold">new</span> CuratorNode(client);
+    }
+
+    <span style="color:#088;font-weight:bold">private</span> <span style="color:#339;font-weight:bold">void</span> close() {
+        client.close();
+    }
+
+    <span style="color:#007">@Test</span>
+    <span style="color:#088;font-weight:bold">public</span> <span style="color:#339;font-weight:bold">void</span> curatorCacheListen() {
+        init();
+        <span style="color:#0a8;font-weight:bold">String</span> path = <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">/addListener</span><span style="color:#710">&quot;</span></span>;
+        <span style="color:#0a8;font-weight:bold">CountDownLatch</span> countDownLatch = <span style="color:#080;font-weight:bold">new</span> <span style="color:#0a8;font-weight:bold">CountDownLatch</span>(<span style="color:#00D">3</span>);
+        CuratorCacheListen curatorCacheListen = <span style="color:#080;font-weight:bold">new</span> CuratorCacheListen(client, path);
+        curatorCacheListen.addListener(CuratorCacheListener
+                .builder().forAll((type, oldNode, newNode) -&gt; {
+                    <span style="color:#0a8;font-weight:bold">System</span>.out.println(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">event type: </span><span style="color:#710">&quot;</span></span> + type + <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#b0b">\n</span><span style="color:#b0b">\r</span><span style="color:#D20">old node</span><span style="color:#710">&quot;</span></span> + oldNode + <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#b0b">\n</span><span style="color:#b0b">\r</span><span style="color:#D20">new node</span><span style="color:#710">&quot;</span></span> + newNode);
+<span style="color:#777">//                .builder().forChanges((oldNode, newNode) -&gt; {</span>
+<span style="color:#777">//                    System.out.println(&quot;\n\rold node&quot; + oldNode + &quot;\n\rnew node&quot; + newNode);</span>
+                }).forInitialized(() -&gt; {
+                    <span style="color:#0a8;font-weight:bold">System</span>.out.println(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">initialize</span><span style="color:#710">&quot;</span></span>);
+                }).build());
+        <span style="color:#080;font-weight:bold">try</span> {
+            <span style="color:#777">//for (int i = 0; i &lt; 100; i++) {</span>
+                curatorNode.create(path);
+                countDownLatch.countDown();
+                <span style="color:#777">//Thread.sleep(1);</span>
+                <span style="color:#777">//curatorNode.setData(path, (&quot;Hello&quot; + i).getBytes());</span>
+            curatorNode.setData(path, <span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">Hello</span><span style="color:#710">&quot;</span></span>.getBytes());
+                countDownLatch.countDown();
+                curatorNode.delete(path);
+                countDownLatch.countDown();
+                countDownLatch.await();
+            <span style="color:#777">//}</span>
+            <span style="color:#777">//System.in.read();</span>
+        } <span style="color:#080;font-weight:bold">catch</span> (<span style="color:#C00;font-weight:bold">Exception</span> e) {
+            <span style="color:#0a8;font-weight:bold">System</span>.out.println(e.getMessage());
+        }
+
+    }
+}</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_5_源代码">5. 源代码</h2>
+<div class="sectionbody">
+<div class="dlist">
+<dl>
+<dt class="hdlist1">5.1 github仓库地址</dt>
+<dd>
+<p><a href="https://github.com/CrackerSuperior/curator-api-use">curator-api-use</a></p>
+</dd>
+<dt class="hdlist1">5.2 git</dt>
+<dd>
+<p><a href="https://github.com/CrackerSuperior/curator-api-use.git" class="bare">https://github.com/CrackerSuperior/curator-api-use.git</a></p>
+</dd>
+</dl>
+</div>
 </div>
 </div>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2022-02-18 11:58:18 +0800
+Last updated 2022-02-22 10:39:09 +0800
 </div>
 </div>
 </body>
