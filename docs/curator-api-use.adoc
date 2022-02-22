@@ -832,8 +832,8 @@ public class CuratorNodeTest {
 }
 ----
 
-== 5. 源代码
-5.1 github仓库地址::
+== 源代码
+github仓库地址::
 https://github.com/CrackerSuperior/curator-api-use[curator-api-use]
-5.2 git::
+git::
 https://github.com/CrackerSuperior/curator-api-use.git
